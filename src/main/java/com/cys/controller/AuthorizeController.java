@@ -26,13 +26,19 @@ public class AuthorizeController {
     @Value("${github.client.secret}")
     private String clientSecret;
 
-    @Value("${github.redirect.uri}") // 新增注入
+    @Value("${github.redirect.uri}")
     private String redirectUri;
 
     @GetMapping("/callback")
-    public String callback(@RequestParam(name="code") String code,
+    public String callback(@RequestParam(name="code", required = false) String code,
                            @RequestParam(name="state") String state,
-                           HttpSession session) { // 新增HttpSession参数
+                           HttpSession session) {
+
+        if (code == null || code.trim().isEmpty()) {
+            logger.warn("GitHub OAuth 回调失败，code 为空。可能用户取消了授权。");
+            return "redirect:/"; // 重定向回首页
+        }
+
         try {
             logger.info("OAuth 回调开始, code: {}, state: {}", code, state);
 
