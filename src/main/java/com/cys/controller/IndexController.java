@@ -1,14 +1,36 @@
 package com.cys.controller;
 
-import org.springframework.stereotype.Controller; // 1. 必须使用 @Controller 注解
-import org.springframework.ui.Model; // 2. 必须导入正确的 Model 类
+import com.cys.dto.GithubUser;
+import org.springframework.beans.factory.annotation.Value; // 新增导入
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 
-@Controller // 3. 加上这个注解，Spring Boot 才知道它是一个控制器
+import jakarta.servlet.http.HttpSession;
+
+@Controller
 public class IndexController {
+
+    @Value("${github.client.id}") // 新增注入
+    private String clientId;
+
+    @Value("${github.redirect.uri}") // 新增注入
+    private String redirectUri;
+
     @GetMapping("/")
-    public String index() {
+    public String index(HttpSession session, Model model) { // 新增HttpSession和Model参数
+        GithubUser user = (GithubUser) session.getAttribute("user");
+        if (user != null) {
+            model.addAttribute("user", user); // 传入用户到模板
+        }
+        model.addAttribute("githubClientId", clientId); // 传入clientId到模板
+        model.addAttribute("githubRedirectUri", redirectUri); // 传入redirectUri到模板
         return "index";
+    }
+
+    @GetMapping("/logout")
+    public String logout(HttpSession session) {
+        session.invalidate(); // 或 session.removeAttribute("user");
+        return "redirect:/";
     }
 }
