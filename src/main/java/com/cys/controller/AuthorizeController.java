@@ -2,7 +2,10 @@ package com.cys.controller;
 
 import com.cys.dto.AccessTokenDTO;
 import com.cys.dto.GithubUser;
+import com.cys.mapper.UserMapper;
+import com.cys.model.User;
 import com.cys.provider.GithubProvider;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
@@ -12,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.UUID;
 
 @Controller
 public class AuthorizeController {
@@ -28,6 +33,8 @@ public class AuthorizeController {
 
     @Value("${github.redirect.uri}")
     private String redirectUri;
+    @Autowired
+    private UserMapper userMapper;
 
     @GetMapping("/callback")
     public String callback(@RequestParam(name="code", required = false) String code,
@@ -57,12 +64,20 @@ public class AuthorizeController {
             System.out.println("✅ 成功获取访问令牌");
 
             GithubUser user = githubProvider.getUser(accessToken);
+
             if (user == null) {
                 System.err.println("❌ 获取用户信息失败");
                 return "error";
             }
             System.out.println("✅ 成功获取用户信息");
 
+            User user1 = new User();
+            user1.setToken(UUID.randomUUID().toString());
+            user1.setName(user.getName());
+            user1.setAccountId(String.valueOf(user.getId()));
+            user1.setGmtCreate(System.currentTimeMillis());
+            user1.setGmtModified(user1.getGmtCreate());
+            userMapper.insert(user1);
             // 存储用户到session（新增）
             session.setAttribute("user", user);
 
@@ -82,7 +97,7 @@ public class AuthorizeController {
 
             System.out.println("完整用户对象: " + user.toString());
 
-            return "index"; // 或 "redirect:/" 以重定向首页
+            return "redirect:/"; // 或 "redirect:/" 以重定向首页
         } catch (Exception e) {
             System.err.println("❌ 回调处理错误: " + e.getMessage());
             e.printStackTrace();

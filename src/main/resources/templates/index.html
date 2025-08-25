@@ -31,7 +31,8 @@
                     <a class="btn btn-light" th:href="@{'https://github.com/login/oauth/authorize?client_id=' + ${githubClientId} + '&redirect_uri=' + ${githubRedirectUri} + '&scope=user&state=1'}">登录</a>
                 </li>
                 <li class="nav-item dropdown" th:if="${user != null}">
-                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown"
+                    th:text="${session.user.getName()}">
                         <img th:src="${user.avatar_url}" alt="Avatar" class="rounded-circle" width="30" height="30">
                         <span th:text="${user.displayName}"></span>
                     </a>
