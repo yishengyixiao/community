@@ -3,9 +3,10 @@ package com.cys.controller;
 import com.cys.dto.AccessTokenDTO;
 import com.cys.dto.GithubUser;
 import com.cys.mapper.UserMapper;
-import com.cys.model.User;
+import com.cys.model.User; // 引入我们自己的 User 模型
 import com.cys.provider.GithubProvider;
-import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse; // 必须是 Response
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
@@ -33,75 +34,76 @@ public class AuthorizeController {
 
     @Value("${github.redirect.uri}")
     private String redirectUri;
+
     @Autowired
     private UserMapper userMapper;
 
     @GetMapping("/callback")
     public String callback(@RequestParam(name="code", required = false) String code,
                            @RequestParam(name="state") String state,
+                           HttpServletResponse response, // 确保是 Response
                            HttpSession session) {
 
         if (code == null || code.trim().isEmpty()) {
-            logger.warn("GitHub OAuth 回调失败，code 为空。可能用户取消了授权。");
-            return "redirect:/"; // 重定向回首页
+            logger.warn("GitHub OAuth 回调失败，code 为空。");
+            return "redirect:/";
         }
 
         try {
-            logger.info("OAuth 回调开始, code: {}, state: {}", code, state);
-
+            // ... 获取 accessToken 和 githubUser 的逻辑不变 ...
             AccessTokenDTO accessTokenDTO = new AccessTokenDTO();
             accessTokenDTO.setClient_id(clientId);
             accessTokenDTO.setClient_secret(clientSecret);
             accessTokenDTO.setCode(code);
-            accessTokenDTO.setRedirect_uri(redirectUri); // 修改：使用注入的redirectUri
+            accessTokenDTO.setRedirect_uri(redirectUri);
             accessTokenDTO.setState(state);
-
             String accessToken = githubProvider.getAccessToken(accessTokenDTO);
+
             if (accessToken == null) {
-                System.err.println("❌ 获取访问令牌失败");
-                return "error";
+                logger.error("获取 access_token 失败");
+                return "redirect:/";
             }
-            System.out.println("✅ 成功获取访问令牌");
 
-            GithubUser user = githubProvider.getUser(accessToken);
-
-            if (user == null) {
-                System.err.println("❌ 获取用户信息失败");
-                return "error";
+            GithubUser githubUser = githubProvider.getUser(accessToken);
+            if (githubUser == null) {
+                logger.error("获取 GitHub 用户信息失败");
+                return "redirect:/";
             }
-            System.out.println("✅ 成功获取用户信息");
 
-            User user1 = new User();
-            user1.setToken(UUID.randomUUID().toString());
-            user1.setName(user.getName());
-            user1.setAccountId(String.valueOf(user.getId()));
-            user1.setGmtCreate(System.currentTimeMillis());
-            user1.setGmtModified(user1.getGmtCreate());
-            userMapper.insert(user1);
-            // 存储用户到session（新增）
+            // --- 核心修改在这里 ---
+            // 1. 创建我们自己数据库对应的 User 对象
+            User user = new User();
+            String token = UUID.randomUUID().toString();
+            user.setToken(token);
+            user.setName(githubUser.getName()); // 直接用 name
+            user.setAccountId(String.valueOf(githubUser.getId()));
+            user.setGmtCreate(System.currentTimeMillis());
+            user.setGmtModified(user.getGmtCreate());
+
+            // 2. 将所有前端需要的信息，从 githubUser 完整地复制到我们自己的 user 对象中
+            user.setAvatarUrl(githubUser.getAvatar_url());
+            user.setBio(githubUser.getBio());
+            user.setPublic_repos(githubUser.getPublic_repos());
+            user.setFollowers(githubUser.getFollowers());
+            user.setFollowing(githubUser.getFollowing());
+            user.setHtml_url(githubUser.getHtml_url());
+
+            userMapper.insert(user);
+
+            Cookie cookie = new Cookie("token", token);
+            // 设置有效期为 7 天 (单位是秒)
+            cookie.setMaxAge(60 * 60 * 24 * 7);
+            // 设置 cookie 的作用域为整个网站
+            cookie.setPath("/");
+            response.addCookie(cookie);
+
             session.setAttribute("user", user);
 
-            // 详细打印用户信息（原有）
-            System.out.println("=== 最终用户信息 ===");
-            String userName = user.getName();
-            String userLogin = user.getLogin();
+            return "redirect:/";
 
-            if (userName != null && !userName.trim().isEmpty()) {
-                System.out.printf("用户显示名称: %s%n", userName);
-            } else {
-                System.out.println("⚠️ 用户显示名称为空");
-                if (userLogin != null) {
-                    System.out.printf("使用GitHub用户名代替: %s%n", userLogin);
-                }
-            }
-
-            System.out.println("完整用户对象: " + user.toString());
-
-            return "redirect:/"; // 或 "redirect:/" 以重定向首页
         } catch (Exception e) {
-            System.err.println("❌ 回调处理错误: " + e.getMessage());
-            e.printStackTrace();
-            return "error";
+            logger.error("回调处理时发生未知错误", e);
+            return "redirect:/";
         }
     }
 }
